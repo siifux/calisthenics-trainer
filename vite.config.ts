@@ -9,6 +9,11 @@ const BASE = "/calisthenics-trainer/";
 
 export default defineConfig({
   base: BASE,
+  // GitHub Pages "Deploy from branch" serverer fra docs/ på main.
+  build: {
+    outDir: "docs",
+    emptyOutDir: true,
+  },
   plugins: [
     react(),
     VitePWA({

@@ -18,27 +18,27 @@ Appen er bygget som en **PWA** (Progressive Web App), slik at den kan legges til
 | State         | **React state + Zustand**         | Liten footprint, ingen Redux-boilerplate.                    |
 | Persistence   | **localStorage**                  | All data ligger lokalt på enheten — ingen backend.           |
 | PWA           | **vite-plugin-pwa**               | Auto-genererer manifest + service worker for hjemskjerm.     |
-| Hosting       | **GitHub Pages**                  | Gratis, statisk, enkel deploy via Actions.                   |
-| CI/CD         | **GitHub Actions**                | Bygger og deployer automatisk på push til `main`.            |
+| Hosting       | **GitHub Pages**                  | Gratis, statisk. Server fra `docs/`-mappa på `main`.         |
+| CI/CD         | *(ingen — bygg lokalt)*           | Vi bygger lokalt og committer `docs/`. Bytt til Actions senere ved behov. |
 
 ---
 
 ## Deployment-flyt
 
-Hele opplegget er en enkel **GitOps-loop**: skriv kode lokalt → commit → push til `main` → GitHub Actions bygger → GitHub Pages serverer ny versjon → iPhone-PWA henter oppdateringen ved neste åpning.
+Vi bygger lokalt og committer `docs/`-mappa til `main`. GitHub Pages serverer `docs/` direkte. Ingen CI nødvendig.
 
 ```
-┌─────────────┐   git push    ┌──────────────────┐   build+deploy   ┌──────────────────┐
-│  Local dev  │ ────────────▶ │  GitHub (main)   │ ───────────────▶ │  GitHub Pages    │
-│  npm run    │               │  Actions runner  │   gh-pages /     │  https://<user>. │
-│  dev        │               │  (vite build)    │   artifact       │  github.io/...   │
-└─────────────┘               └──────────────────┘                  └──────────────────┘
-                                                                            │
-                                                                            ▼
-                                                                    ┌──────────────────┐
-                                                                    │  iPhone PWA      │
-                                                                    │  (hjemskjerm)    │
-                                                                    └──────────────────┘
+┌─────────────┐   npm run    ┌──────────────────┐   git push    ┌──────────────────┐
+│  Local dev  │ ───build──▶  │  docs/ (built)   │ ────────────▶ │  GitHub Pages    │
+│  npm run    │              │  + commit        │               │  serves docs/    │
+│  dev        │              │                  │               │  on main         │
+└─────────────┘              └──────────────────┘               └──────────────────┘
+                                                                         │
+                                                                         ▼
+                                                                 ┌──────────────────┐
+                                                                 │  iPhone PWA      │
+                                                                 │  (hjemskjerm)    │
+                                                                 └──────────────────┘
 ```
 
 ### 1. Lokal utvikling
@@ -50,7 +50,7 @@ npm install
 # Start dev-server (http://localhost:5173)
 npm run dev
 
-# Lag produksjonsbygg lokalt (sjekk at det bygger)
+# Lag produksjonsbygg lokalt (output i docs/)
 npm run build
 
 # Forhåndsvis produksjonsbygget lokalt
@@ -59,77 +59,36 @@ npm run preview
 
 Dev-serveren har hot reload — endringer vises umiddelbart i nettleseren.
 
-### 2. Git-flyt
+### 2. Bygg og deploy
 
 ```bash
-# Lag en feature-branch
-git checkout -b feature/emom-timer
+# Bygg produksjonsbundle (output i docs/)
+npm run build
 
-# Commit underveis
+# Commit både kildekode og bygget output
 git add .
-git commit -m "Add EMOM timer skeleton"
-
-# Push til GitHub
-git push -u origin feature/emom-timer
-
-# Når funksjonen er klar: åpne PR, merge til main
-# (eller, for solo-prosjekt: bare push direkte til main)
-git checkout main
-git merge feature/emom-timer
+git commit -m "Update app + rebuild"
 git push origin main
 ```
 
-### 3. GitHub Actions (automatisk deploy)
+Pages henter den nye versjonen automatisk innen ~1 minutt etter push.
 
-Hver push til `main` trigger `.github/workflows/deploy.yml`, som:
+> **OBS — `base`-path i Vite:** Når appen ligger på `https://<user>.github.io/calisthenics-trainer/`, må `vite.config.ts` settes med `base: '/calisthenics-trainer/'` for at assets skal lastes riktig. Hvis du bytter til custom domain eller bruker-/org-side (`<user>.github.io`), endre til `base: '/'`.
 
-1. Sjekker ut koden
-2. Installerer Node + dependencies (`npm ci`)
-3. Bygger appen (`npm run build`) → output i `dist/`
-4. Publiserer `dist/` til GitHub Pages
+### 3. Aktiver GitHub Pages (engangsoppsett)
 
-Eksempel-workflow (legges inn senere når repoet er satt opp):
+I GitHub-repoet:
 
-```yaml
-name: Deploy to GitHub Pages
+1. **Settings → Pages**
+2. **Source:** *Deploy from a branch*
+3. **Branch:** `main` / `docs`
+4. Trykk **Save**
 
-on:
-  push:
-    branches: [main]
+URL: `https://<github-brukernavn>.github.io/calisthenics-trainer/`
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+> Hvis du senere ønsker automatisk deploy (slik at du slipper å bygge lokalt), kan du gå tilbake til GitHub Actions-modellen — se commit-historikk for tidligere workflow-eksempel.
 
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./dist
-      - uses: actions/deploy-pages@v4
-```
-
-> **OBS — `base`-path i Vite:** Når appen ligger på `https://<user>.github.io/calisthenics-trainer/`, må `vite.config.ts` settes med `base: '/calisthenics-trainer/'` for at assets skal lastes riktig. Hvis du bruker en custom domain (CNAME) eller bruker-/org-side (`<user>.github.io`), settes `base: '/'`.
-
-### 4. Aktiver GitHub Pages
-
-Engangsoppsett i GitHub-repoet:
-
-1. **Settings → Pages → Source**: velg *GitHub Actions*.
-2. Første push til `main` deployer automatisk.
-3. URL: `https://<github-brukernavn>.github.io/calisthenics-trainer/`
-
-### 5. Legg til på iPhone-hjemskjerm
+### 4. Legg til på iPhone-hjemskjerm
 
 1. Åpne URL-en i **Safari** på iPhone.
 2. Trykk Del-knappen → *Legg til på Hjem-skjerm*.
@@ -148,20 +107,15 @@ For at PWA-en skal fungere skikkelig på iOS:
 
 ```
 calisthenics-trainer/
-├── .github/
-│   └── workflows/
-│       └── deploy.yml          # CI/CD til GitHub Pages
+├── docs/                       # Bygget output (committes — Pages serverer herfra)
 ├── public/
-│   ├── icon-192.png
-│   ├── icon-512.png
-│   └── apple-touch-icon.png
+│   ├── .nojekyll               # Hindrer Jekyll-prosessering på Pages
+│   ├── favicon.svg
+│   └── apple-touch-icon.png    # (legg inn 180×180 PNG)
 ├── src/
-│   ├── components/             # Gjenbrukbare UI-komponenter
-│   ├── screens/                # Toppnivå-skjermer (Home, EmomSession, ...)
-│   ├── features/
-│   │   └── emom/               # EMOM-spesifikk logikk og UI
-│   ├── store/                  # Zustand stores
-│   ├── lib/                    # Hjelpefunksjoner (timer, persistence)
+│   ├── screens/                # Toppnivå-skjermer (Home, EmomSetup, EmomActive, Summary)
+│   ├── store/                  # Zustand store
+│   ├── lib/                    # timer, audio, wakeLock, persistence, uuid
 │   ├── types/                  # TypeScript-typer
 │   ├── App.tsx
 │   ├── main.tsx
